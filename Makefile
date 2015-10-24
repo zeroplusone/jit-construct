@@ -1,6 +1,6 @@
 BIN = interpreter \
       compiler-x86 compiler-x64 compiler-arm \
-      jit-x64 jit-arm
+      jit-x64 jit-arm jit-x64-contraction
 
 CROSS_COMPILE = arm-linux-gnueabihf-
 QEMU_ARM = qemu-arm -L /usr/arm-linux-gnueabihf
@@ -48,6 +48,18 @@ run-jit-x64: jit-x64
 	./jit-x64 progs/hello.b && objdump -D -b binary \
 		-mi386 -Mx86-64 /tmp/jitcode
 
+jit0-x64-contraction: tests/jit0-x64-contraction.c
+	$(CC) $(CFLAGS) -o $@ $^
+
+jit-x64-contraction: dynasm-driver.c jit-x64-contraction.h
+	$(CC) $(CFLAGS) -o $@ -DJIT=\"jit-x64-contraction.h\" \
+		dynasm-driver.c
+jit-x64-contraction.h: jit-x64-contraction.dasc
+	        $(LUA) dynasm/dynasm.lua -o $@ jit-x64-contraction.dasc
+run-jit-x64-contraction: jit-x64-contraction
+	./jit-x64-contraction progs/hello.b && objdump -D -b binary \
+		-mi386 -Mx86-64 /tmp/jitcode
+
 jit0-arm: tests/jit0-arm.c
 	$(CROSS_COMPILE)gcc $(CFLAGS) -o $@ $^
 
@@ -61,6 +73,12 @@ run-jit-arm: jit-arm
 	$(CROSS_COMPILE)objdump -D -b binary -marm /tmp/jitcode
 
 bench-jit-x64: jit-x64
+	@echo
+	@echo Executing Brainf*ck benchmark suite. Be patient.
+	@echo
+	@env PATH='.:${PATH}' BF_RUN='$<' tests/bench.py
+
+bench-jit-x64-contraction: jit-x64-contraction
 	@echo
 	@echo Executing Brainf*ck benchmark suite. Be patient.
 	@echo
