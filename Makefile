@@ -1,6 +1,6 @@
 BIN = interpreter \
       compiler-x86 compiler-x64 compiler-arm \
-      jit-x64 jit-arm jit-x64-contraction jit-x64-clearLoops
+      jit-x64 jit-arm jit-x64-contraction jit-x64-clearLoops jit-x64-copyLoops
 
 CROSS_COMPILE = arm-linux-gnueabihf-
 QEMU_ARM = qemu-arm -L /usr/arm-linux-gnueabihf
@@ -66,6 +66,15 @@ run-jit-x64-clearLoops: jit-x64-clearLoops
 	./jit-x64-clearLoops progs/hello.b && objdump -D -b binary \
 		-mi386 -Mx86-64 /tmp/jitcode
 
+jit-x64-copyLoops: dynasm-driver.c jit-x64-copyLoops.h
+	$(CC) $(CFLAGS) -o $@ -DJIT=\"jit-x64-copyLoops.h\" \
+		dynasm-driver.c
+jit-x64-copyLoops.h: jit-x64-copyLoops.dasc
+	        $(LUA) dynasm/dynasm.lua -o $@ jit-x64-copyLoops.dasc
+run-jit-x64-copyLoops: jit-x64-copyLoops
+	./jit-x64-copyLoops progs/hello.b && objdump -D -b binary \
+		-mi386 -Mx86-64 /tmp/jitcode
+
 
 
 jit0-arm: tests/jit0-arm.c
@@ -98,6 +107,12 @@ bench-jit-x64-clearLoops: jit-x64-clearLoops
 	@echo
 	@env PATH='.:${PATH}' BF_RUN='$<' tests/bench.py
 
+bench-jit-x64-copyLoops: jit-x64-copyLoops
+	@echo
+	@echo Executing Brainf*ck benchmark suite. Be patient.
+	@echo
+	@env PATH='.:${PATH}' BF_RUN='$<' tests/bench.py
+
 
 test: test_stack jit0-x64 jit0-arm
 	./test_stack
@@ -111,4 +126,4 @@ clean:
 	$(RM) $(BIN) \
 	      hello-x86 hello-x64 hello-arm hello.s \
 	      test_stack jit0-x64 jit0-arm \
-	      jit-x64.h jit-arm.h jit-x64-contraction.h jit-x64-clearLoops.h
+	      jit-x64.h jit-arm.h jit-x64-contraction.h jit-x64-clearLoops.h jit-x64-copyLoops.h
