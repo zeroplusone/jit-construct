@@ -24,9 +24,27 @@
 
 /* calculate the number of continuous same chacter */
 int countRepeat(char c, char** p){
-    int ret=1;
-    while(*(++(*p))==c) {
-        ret++;
+    int ret=0;
+    char incre, decre;
+
+    
+    if(c == '<' || c == '>'){
+        incre = '>';
+        decre = '<';
+    } 
+    else if (c == '+' || c=='-') {
+        incre = '+';
+        decre = '-';
+    }
+
+    while(1) {
+        if( **p == incre)
+            ret++;
+        else if( **p == decre)
+            ret--;
+        else
+            break;
+        (*p)++;    
     }
     (*p)--;
     return ret;
@@ -51,19 +69,40 @@ int main(int argc, char *argv[])
 		switch (*p) {
 		case '>':
             repeatTimes=countRepeat('>', &p);
-			|  add  PTR,repeatTimes
+            if(repeatTimes > 0) {
+			    |  add  PTR, repeatTimes
+            } else {
+                repeatTimes *= (-1);
+                |  sub  PTR, repeatTimes
+            }
 			break;
 		case '<':
             repeatTimes=countRepeat('<', &p);
-			|  sub  PTR,repeatTimes
+			if(repeatTimes > 0) {
+			    |  add  PTR, repeatTimes
+            } else {
+                repeatTimes *= (-1);
+                |  sub  PTR, repeatTimes
+            }
+
 			break;
 		case '+':
             repeatTimes=countRepeat('+', &p);
-			|  add  byte [PTR],repeatTimes
-			break;
+			if(repeatTimes > 0) {
+                |  add  byte [PTR], repeatTimes
+			} else {
+                repeatTimes *= (-1);
+                |  sub  byte [PTR], repeatTimes
+            }
+            break;
 		case '-':
             repeatTimes=countRepeat('-', &p);
-			|  sub  byte [PTR],repeatTimes
+            if(repeatTimes > 0) {
+                |  add  byte [PTR], repeatTimes
+			} else {
+                repeatTimes *= (-1);
+                |  sub  byte [PTR], repeatTimes
+            }
 			break;
 		case '.':
 			|  movzx edi, byte [PTR]

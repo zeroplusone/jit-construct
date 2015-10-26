@@ -44,9 +44,27 @@ static const unsigned char actions[65] = {
 
 /* calculate the number of continuous same chacter */
 int countRepeat(char c, char** p){
-    int ret=1;
-    while(*(++(*p))==c) {
-        ret++;
+    int ret=0;
+    char incre, decre;
+
+    
+    if(c == '<' || c == '>'){
+        incre = '>';
+        decre = '<';
+    } 
+    else if (c == '+' || c=='-') {
+        incre = '+';
+        decre = '-';
+    }
+
+    while(1) {
+        if( **p == incre)
+            ret++;
+        else if( **p == decre)
+            ret--;
+        else
+            break;
+        (*p)++;    
     }
     (*p)--;
     return ret;
@@ -67,45 +85,74 @@ int main(int argc, char *argv[])
 	//|  push PTR
 	//|  mov  PTR, rdi      // rdi store 1st argument
 	dasm_put(Dst, 0);
-#line 49 "jit-x64-contraction.dasc"
+#line 67 "jit-x64-contraction.dasc"
 
 	for (char *p = read_file(argv[1]); *p; p++) {
 		switch (*p) {
 		case '>':
             repeatTimes=countRepeat('>', &p);
-			//|  add  PTR,repeatTimes
-			dasm_put(Dst, 6, repeatTimes);
-#line 55 "jit-x64-contraction.dasc"
+            if(repeatTimes > 0) {
+			    //|  add  PTR, repeatTimes
+			    dasm_put(Dst, 6, repeatTimes);
+#line 74 "jit-x64-contraction.dasc"
+            } else {
+                repeatTimes *= (-1);
+                //|  sub  PTR, repeatTimes
+                dasm_put(Dst, 11, repeatTimes);
+#line 77 "jit-x64-contraction.dasc"
+            }
 			break;
 		case '<':
             repeatTimes=countRepeat('<', &p);
-			//|  sub  PTR,repeatTimes
-			dasm_put(Dst, 11, repeatTimes);
-#line 59 "jit-x64-contraction.dasc"
+			if(repeatTimes > 0) {
+			    //|  add  PTR, repeatTimes
+			    dasm_put(Dst, 6, repeatTimes);
+#line 83 "jit-x64-contraction.dasc"
+            } else {
+                repeatTimes *= (-1);
+                //|  sub  PTR, repeatTimes
+                dasm_put(Dst, 11, repeatTimes);
+#line 86 "jit-x64-contraction.dasc"
+            }
+
 			break;
 		case '+':
             repeatTimes=countRepeat('+', &p);
-			//|  add  byte [PTR],repeatTimes
-			dasm_put(Dst, 17, repeatTimes);
-#line 63 "jit-x64-contraction.dasc"
-			break;
+			if(repeatTimes > 0) {
+                //|  add  byte [PTR], repeatTimes
+                dasm_put(Dst, 17, repeatTimes);
+#line 93 "jit-x64-contraction.dasc"
+			} else {
+                repeatTimes *= (-1);
+                //|  sub  byte [PTR], repeatTimes
+                dasm_put(Dst, 21, repeatTimes);
+#line 96 "jit-x64-contraction.dasc"
+            }
+            break;
 		case '-':
             repeatTimes=countRepeat('-', &p);
-			//|  sub  byte [PTR],repeatTimes
-			dasm_put(Dst, 21, repeatTimes);
-#line 67 "jit-x64-contraction.dasc"
+            if(repeatTimes > 0) {
+                //|  add  byte [PTR], repeatTimes
+                dasm_put(Dst, 17, repeatTimes);
+#line 102 "jit-x64-contraction.dasc"
+			} else {
+                repeatTimes *= (-1);
+                //|  sub  byte [PTR], repeatTimes
+                dasm_put(Dst, 21, repeatTimes);
+#line 105 "jit-x64-contraction.dasc"
+            }
 			break;
 		case '.':
 			//|  movzx edi, byte [PTR]
 			//|  callp putchar
 			dasm_put(Dst, 25, (unsigned int)((uintptr_t)putchar), (unsigned int)(((uintptr_t)putchar)>>32));
-#line 71 "jit-x64-contraction.dasc"
+#line 110 "jit-x64-contraction.dasc"
 			break;
 		case ',':
 			//|  callp getchar
 			//|  mov   byte [PTR], al
 			dasm_put(Dst, 36, (unsigned int)((uintptr_t)getchar), (unsigned int)(((uintptr_t)getchar)>>32));
-#line 75 "jit-x64-contraction.dasc"
+#line 114 "jit-x64-contraction.dasc"
 			break;
 		case '[':
 			if (top == limit) err("Nesting too deep.");
@@ -119,7 +166,7 @@ int main(int argc, char *argv[])
 			//|  je   =>(maxpc-2)
 			//|=>(maxpc-1):
 			dasm_put(Dst, 46, (maxpc-2), (maxpc-1));
-#line 87 "jit-x64-contraction.dasc"
+#line 126 "jit-x64-contraction.dasc"
 			break;
 		case ']':
 			if (top == pcstack) err("Unmatched ']'");
@@ -128,7 +175,7 @@ int main(int argc, char *argv[])
 			//|  jne  =>(*top-1)
 			//|=>(*top-2):
 			dasm_put(Dst, 54, (*top-1), (*top-2));
-#line 94 "jit-x64-contraction.dasc"
+#line 133 "jit-x64-contraction.dasc"
 			break;
 		}
 	}
@@ -137,7 +184,7 @@ int main(int argc, char *argv[])
 	//|  pop  PTR
 	//|  ret
 	dasm_put(Dst, 62);
-#line 101 "jit-x64-contraction.dasc"
+#line 140 "jit-x64-contraction.dasc"
 
 	void (*fptr)(char*) = jitcode(&state);
 	char *mem = calloc(30000, 1);
