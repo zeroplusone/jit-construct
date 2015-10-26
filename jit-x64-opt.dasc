@@ -1,0 +1,185 @@
+#include <stdint.h>
+#include "util.h"
+#include <stdbool.h>
+
+|.arch x64
+|.actionlist actions
+|
+|// Use rbx as our cell pointer.
+|// Since rbx is a callee-save register, it will be preserved
+|// across our calls to getchar and putchar.
+|.define PTR, rbx
+|
+|// Macro for calling a function.
+|// In cases where our target is <=2**32 away we can use
+|//   | call &addr
+|// But since we don't know if it will be, we use this safe
+|// sequence instead.
+|.macro callp, addr
+|  mov64  rax, (uintptr_t)addr
+|  call   rax
+|.endmacro
+
+#define Dst &state
+#define MAX_NESTING 256
+
+/* calculate the number of continuous same chacter */
+int countRepeat(char c, char** p){
+    int ret=0;
+    char incre, decre;
+
+    
+    if(c == '<' || c == '>'){
+        incre = '>';
+        decre = '<';
+    } 
+    else if (c == '+' || c=='-') {
+        incre = '+';
+        decre = '-';
+    }
+
+    while(1) {
+        if( **p == incre)
+            ret++;
+        else if( **p == decre)
+            ret--;
+        else
+            break;
+        (*p)++;    
+    }
+    (*p)--;
+    return ret;
+}
+
+bool clearLoops(char** p) 
+{
+    if( *((*p)+1)=='-' && *((*p)+2)==']') {
+        // move pointer to ] for keep reading input
+        (*p) += 2;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+int copyLoops(char** p) 
+{
+    if( *((*p)+1) == '-' &&  *((*p)+2) == '>' && *((*p)+3) == '+' && *((*p)+4) == '<' && *((*p)+5) == ']' ) {
+        (*p) += 5;
+        return 1;
+    }
+    /* other patterns return 0 */
+    return 0;
+
+}
+
+int main(int argc, char *argv[])
+{
+	if (argc < 2) err("Usage: jit-x64 <inputfile>");
+	dasm_State *state;
+	initjit(&state, actions);
+
+	unsigned int maxpc = 0;
+	int pcstack[MAX_NESTING];
+	int *top = pcstack, *limit = pcstack + MAX_NESTING;
+    int repeatTimes = 1;
+    int copyTimes, i;
+	
+    // Function prologue.
+	|  push PTR
+	|  mov  PTR, rdi      // rdi store 1st argument
+
+	for (char *p = read_file(argv[1]); *p; p++) {
+		switch (*p) {
+		case '>':
+            repeatTimes=countRepeat('>', &p);
+            if(repeatTimes > 0) {
+			    |  add  PTR, repeatTimes
+            } else {
+                repeatTimes *= (-1);
+                |  sub  PTR, repeatTimes
+            }
+			break;
+		case '<':
+            repeatTimes=countRepeat('<', &p);
+			if(repeatTimes > 0) {
+			    |  add  PTR, repeatTimes
+            } else {
+                repeatTimes *= (-1);
+                |  sub  PTR, repeatTimes
+            }
+
+			break;
+		case '+':
+            repeatTimes=countRepeat('+', &p);
+			if(repeatTimes > 0) {
+                |  add  byte [PTR], repeatTimes
+			} else {
+                repeatTimes *= (-1);
+                |  sub  byte [PTR], repeatTimes
+            }
+            break;
+		case '-':
+            repeatTimes=countRepeat('-', &p);
+            if(repeatTimes > 0) {
+                |  add  byte [PTR], repeatTimes
+			} else {
+                repeatTimes *= (-1);
+                |  sub  byte [PTR], repeatTimes
+            }
+			break;
+
+		case '.':
+			|  movzx edi, byte [PTR]
+			|  callp putchar
+			break;
+		case ',':
+			|  callp getchar
+			|  mov   byte [PTR], al
+			break;
+		case '[':
+			if (top == limit) err("Nesting too deep.");
+			// Each loop gets two pclabels: at the beginning and end.
+			// We store pclabel offsets in a stack to link the loop
+			// begin and end together.
+            if(clearLoops(&p)) {
+                |  mov byte[PTR], 0
+                break;
+		    }
+            copyTimes=copyLoops(&p);
+            if(copyTimes > 0) {
+                |  mov cl, byte [PTR]
+                for(i = 1; i <= copyTimes; ++i) { 
+                    |  add byte [PTR+i], cl
+                }
+                |  mov byte [PTR], 0
+		    } else {
+			    maxpc += 2;
+			    *top++ = maxpc;
+			    dasm_growpc(&state, maxpc);
+			    |  cmp  byte [PTR], 0
+			    |  je   =>(maxpc-2)
+			    |=>(maxpc-1):
+			}
+			break;
+		case ']':
+           	if (top == pcstack) err("Unmatched ']'");
+	        top--;
+			|  cmp  byte [PTR], 0
+			|  jne  =>(*top-1)
+			|=>(*top-2):
+			break;
+		}
+	}
+
+	// Function epilogue.
+	|  pop  PTR
+	|  ret
+
+	void (*fptr)(char*) = jitcode(&state);
+	char *mem = calloc(30000, 1);
+	fptr(mem);
+	free(mem);
+	free_jitcode(fptr);
+	return 0;
+}
